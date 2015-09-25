@@ -589,6 +589,7 @@ struct clearpad_t {
 	u32 touch_size_enabled;
 	u32 touch_orientation_enabled;
 	struct device_node *evdt_node;
+	u32 wakeup_gesture_support;
 	struct delayed_work wd_poll_work;
 	int wd_poll_t_jf;
 	spinlock_t slock;
@@ -2707,6 +2708,31 @@ static void clearpad_funcarea_down(struct clearpad_t *this,
 	}
 }
 
+static int get_num_fingers_f12(struct clearpad_t *this,
+	int *num_fingers)
+{
+	int rc, num;
+	u16 val, mask;
+	const int max_objects = this->extents.n_fingers;
+
+	rc = clearpad_read(SYNF2(this, F12_2D, DATA, OBJ_ATTENTION),
+		(u8 *)&val, sizeof(val));
+	if (rc)
+		goto error;
+
+	val = le16_to_cpu(val);
+
+	for (num = 0, mask = 0x1; num < max_objects; num++, mask <<= 1)
+		if (val < mask)
+			break;
+
+	*num_fingers = num;
+
+	dev_dbg(&this->pdev->dev, "fingers=%d, 0x%04hX", num, val);
+error:
+	return rc;
+}
+
 static void clearpad_funcarea_up(struct clearpad_t *this,
 				  struct clearpad_pointer_t *pointer)
 {
@@ -2724,6 +2750,16 @@ static void clearpad_funcarea_up(struct clearpad_t *this,
 		if (!valid)
 			break;
 		input_mt_sync(idev);
+		if (this->wakeup_gesture.engaged && !(this->active & SYN_ACTIVE_POWER)) {
+ 			LOG_CHECK(this, "D2W: difference: %u", jiffies_to_msecs(this->ew_timeout) - jiffies_to_msecs(jiffies));
+ 			if (time_after(jiffies, this->ew_timeout)) {
+ 				this->ew_timeout = jiffies + msecs_to_jiffies(this->easy_wakeup_config.timeout_delay);
+ 				LOG_CHECK(this, "D2W: now: %u | new timeout: %u", jiffies_to_msecs(jiffies), jiffies_to_msecs(this->ew_timeout));
+ 			} else {
+ 				LOG_CHECK(this, "D2W: Unlock!");
+ 				evdt_execute(this->evdt_node, this->input, 0102);
+ 			}
+ 		}			
 		break;
 	case SYN_FUNCAREA_BUTTON:
 		LOG_EVENT(this, "button up\n");
@@ -2969,31 +3005,6 @@ exit:
 	return rc;
 }
 
-static int get_num_fingers_f12(struct clearpad_t *this,
-	int *num_fingers)
-{
-	int rc, num;
-	u16 val, mask;
-	const int max_objects = this->extents.n_fingers;
-
-	rc = clearpad_get_block(SYNS(this, F12_2D, DATA, OBJ_ATTENTION),
-		(u8 *)&val, sizeof(val));
-	if (rc)
-		goto error;
-
-	val = le16_to_cpu(val);
-
-	for (num = 0, mask = 0x1; num < max_objects; num++, mask <<= 1)
-		if (val < mask)
-			break;
-
-	*num_fingers = num;
-
-	dev_dbg(&this->pdev->dev, "fingers=%d, 0x%04hX", num, val);
-error:
-	return rc;
-}
-
 static int clearpad_read_fingers_f12(struct clearpad_t *this)
 {
 	int rc, finger, num_fingers;
@@ -3041,8 +3052,9 @@ static int clearpad_handle_gesture(struct clearpad_t *this)
 		msecs_to_jiffies(this->wakeup_gesture.timeout_delay);
 	else
 		goto exit;
-
+	
 	evdt_execute(this->evdt_node, this->input, wakeint);
+	
 exit:
 	return rc;
 }
@@ -3100,6 +3112,7 @@ static int clearpad_process_F11_2D(struct clearpad_t *this)
 	if (this->wakeup_gesture.enabled &&
 	    !(this->active & SYN_ACTIVE_POWER)) {
 		rc = clearpad_handle_gesture(this);
+	printk("Looks like no one came here");
 		goto exit;
 	}
 
@@ -5467,7 +5480,7 @@ static int __devinit clearpad_probe(struct platform_device *pdev)
 	/* sysfs */
 	rc = create_sysfs_entries(this);
 	if (rc)
-		goto err_input_device;
+//		goto err_input_device;
 
 #ifdef CONFIG_DEBUG_FS
 	/* debugfs */
