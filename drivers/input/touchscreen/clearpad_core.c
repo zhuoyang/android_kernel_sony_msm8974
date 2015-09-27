@@ -2715,7 +2715,7 @@ static int get_num_fingers_f12(struct clearpad_t *this,
 	u16 val, mask;
 	const int max_objects = this->extents.n_fingers;
 
-	rc = clearpad_read(SYNF2(this, F12_2D, DATA, OBJ_ATTENTION),
+	rc = clearpad_read(SYNS(this, F12_2D, DATA, OBJ_ATTENTION),
 		(u8 *)&val, sizeof(val));
 	if (rc)
 		goto error;
@@ -2751,10 +2751,10 @@ static void clearpad_funcarea_up(struct clearpad_t *this,
 			break;
 		input_mt_sync(idev);
 		if (this->wakeup_gesture.engaged && !(this->active & SYN_ACTIVE_POWER)) {
- 			LOG_CHECK(this, "D2W: difference: %u", jiffies_to_msecs(this->ew_timeout) - jiffies_to_msecs(jiffies));
- 			if (time_after(jiffies, this->ew_timeout)) {
- 				this->ew_timeout = jiffies + msecs_to_jiffies(this->easy_wakeup_config.timeout_delay);
- 				LOG_CHECK(this, "D2W: now: %u | new timeout: %u", jiffies_to_msecs(jiffies), jiffies_to_msecs(this->ew_timeout));
+ 			LOG_CHECK(this, "D2W: difference: %u", jiffies_to_msecs(this->wakeup_gesture.time_started) - jiffies_to_msecs(jiffies));
+ 			if (time_after(jiffies, this->wakeup_gesture.time_started)) {
+ 				this->wakeup_gesture.time_started = jiffies + msecs_to_jiffies(this->wakeup_gesture.timeout_delay);
+ 				LOG_CHECK(this, "D2W: now: %u | new timeout: %u", jiffies_to_msecs(jiffies), jiffies_to_msecs(this->wakeup_gesture.time_started));
  			} else {
  				LOG_CHECK(this, "D2W: Unlock!");
  				evdt_execute(this->evdt_node, this->input, 0102);
